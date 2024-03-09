@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Order Status</title>
+    <style>
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+      .btn {
+          padding: 8px 12px;
+          background-color: #007bff;
+          color: #fff;
+          border: none;
+          cursor: pointer;
+      }
+      .btn:hover {
+          background-color: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Item</th>
+          <th>Quantity</th>
+          <th>Notes</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+          <!-- Table rows will be populated dynamically using JavaScript -->
+      </tbody>
+    </table>
+
+    <script>
+      // Getter function to get the data
+      async function fetchDataAndPopulateTable() {
+        const ws = new WebSocket('ws://localhost:8080/list');
+        
+        ws.onmessage = function(event) {
+          const data = JSON.parse(event.data);
+          populateTable(data);
+        };
+      }
+
+      // Populate the data received into table 
+      function populateTable(data) {
+        data.sort((a, b) => b.id - a.id);
+        const tableBody = document.querySelector('#data-table tbody');
+        tableBody.innerHTML = '';
+
+        data.forEach(item => {
+          const row = document.createElement('tr');
+
+          row.innerHTML = `
+            <td>${item.id}</td>
+            <td>${item.item}</td>
+            <td>${item.quantity}</td>
+            <td>${item.notes}</td>
+            <td>${item.status}</td>
+            <td class="action-buttons">
+              ${item.status !== 'completed' ? `<button onclick="updateData('${escape(JSON.stringify(item))}', 'process')">In Process</button>` : ''}
+              ${item.status !== 'completed' ? `<button onclick="updateData('${escape(JSON.stringify(item))}', 'completed')">Completed</button>` : ''}
+            </td>
+        `;
+          tableBody.appendChild(row);
+        });
+      }
+
+      // Function to update data
+      function updateData(itemJSON, newStatus) {
+        const item = JSON.parse(unescape(itemJSON));
+
+        const rowData = {
+          id: item.id,
+          item: item.item,
+          quantity: item.quantity,
+          notes: item.notes,
+          status: newStatus
+        };
+
+        const ws = new WebSocket('ws://localhost:8080/kitchen');
+        ws.onopen = function() {
+          ws.send(JSON.stringify(rowData));
+          console.log(`Sending data to updated:`, rowData);
+        };
+
+        ws.onerror = function(error) {
+          console.error('WebSocket error:', error);
+        };
+      }
+
+      // Call the function to fetch data and populate the table
+      fetchDataAndPopulateTable();
+    </script>
+  </body>
+</html>

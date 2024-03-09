@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cashier Input Order</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+
+      .container {
+        max-width: 600px;
+        margin: 50px auto;
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      h2 {
+        margin-top: 0;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        font-weight: bold;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+        margin-top: 5px;
+      }
+
+      button[type="submit"] {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      button[type="submit"]:hover {
+        background-color: #45a049;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+      .btn {
+        padding: 8px 12px;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+      .btn:hover {
+          background-color: #0056b3;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Input Food Order</h2>
+      <form id="cashierForm">
+        <div class="form-group">
+          <label for="item">Item:</label>
+          <input type="text" name="item" id="item" required>
+        </div>
+        <div class="form-group">
+          <label for="quantity">Quantity:</label>
+          <input type="number" name="quantity" id="quantity" min="1" required>
+        </div>
+        <div class="form-group">
+          <label for="notes">Notes:</label>
+          <input type="text" name="notes" id="notes">
+        </div>
+        <div class="form-group hidden">
+          <label for="status">Status:</label>
+          <select name="status" id="status" required>
+            <option value="sent to kitchen" selected>Sent to Kitchen</option>
+          </select>
+        </div>
+        <button type="submit">Submit</button>
+      </form>
+    </div>
+    <div id="tableContainer">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Item</th>
+            <th>Quantity</th>
+            <th>Notes</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+            <!-- Table rows will be populated dynamically using JavaScript -->
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+      let localOrders = []; // Array to store orders locally
+
+      document.getElementById('cashierForm').addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent form submission and reloading the page
+
+        const form = event.target;
+        const formData = new FormData(form);
+
+        const data = {};
+        formData.forEach((value, key) => {
+          if (key === 'quantity') {
+            data[key] = parseInt(value);
+          } else {
+            data[key] = value;
+          }
+        });
+
+        sendDataToWebSocket(data);
+
+        form.reset(); // Reset form fields
+      });
+
+      function sendDataToWebSocket(data) {
+        const ws = new WebSocket('ws://localhost:8080/cashier');
+
+        ws.addEventListener('open', function() {
+          ws.send(JSON.stringify(data)); // Convert data to JSON string and send to WebSocket server
+          console.log(`Sending data to kitchen:`, data)
+        });
+
+        ws.addEventListener('error', function(error) {
+          console.error('WebSocket error:', error);
+          localOrders.push(data); // Store order locally if WebSocket connection fails
+        });
+      }
+
+      // Periodically check for WebSocket connection and attempt to resend locally stored orders
+      setInterval(function() {
+        if (localOrders.length > 0) {
+          const ws = new WebSocket('ws://localhost:8080/cashier');
+
+          ws.addEventListener('open', function() {
+            localOrders.forEach(order => {
+              ws.send(JSON.stringify(order)); // Resend locally stored orders when connection is back up
+              console.log(`Resending data to kitchen:`, order);
+            });
+            localOrders = []; // Clear locally stored orders after resending
+          });
+
+          ws.addEventListener('error', function(error) {
+            console.error('WebSocket error:', error);
+          });
+        }
+      }, 5000); // Check every 5 seconds for WebSocket connection
+      
+      // Getter function to get the data
+      async function fetchDataAndPopulateTable() {
+        const ws = new WebSocket('ws://localhost:8080/list');
+        
+        ws.onmessage = function(event) {
+          const data = JSON.parse(event.data);
+          populateTable(data);
+        };
+      }
+
+      // Populate the data received into table 
+      function populateTable(data) {
+        data.sort((a, b) => b.id - a.id);
+        const tableBody = document.querySelector('#data-table tbody');
+        tableBody.innerHTML = '';
+
+        data.forEach(item => {
+          const row = document.createElement('tr');
+
+          row.innerHTML = `
+            <td>${item.id}</td>
+            <td>${item.item}</td>
+            <td>${item.quantity}</td>
+            <td>${item.notes}</td>
+            <td>${item.status}</td>
+        `;
+          tableBody.appendChild(row);
+        });
+      }
+
+      fetchDataAndPopulateTable();
+    </script>
+  </body>
+</html>
